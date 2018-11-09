@@ -2,11 +2,11 @@ package eu.luminis.breed.sleuth;
 
 
 import brave.Span;
+import brave.Span.Kind;
 import brave.Tracer;
-import brave.http.HttpClientHandler;
+import brave.Tracing;
 import brave.http.HttpTracing;
 import brave.propagation.Propagation.Setter;
-import brave.propagation.TraceContext.Injector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ws.client.support.interceptor.ClientInterceptor;
@@ -23,15 +23,12 @@ public class TraceWebServiceClientInterceptor implements ClientInterceptor {
   private final static Logger logger = LoggerFactory.getLogger(TraceWebServiceClientInterceptor.class);
 
   private final Tracer tracer;
-  private final HttpClientHandler handler;
-  private final Injector<SoapHeader> injector;
+  private final Tracing tracing;
 
   public TraceWebServiceClientInterceptor(HttpTracing httpTracing) {
     tracer = httpTracing.tracing().tracer();
-    handler = HttpClientHandler.create(httpTracing, new eu.luminis.breed.sleuth.WebServiceClientAdapter());
-    injector = httpTracing.tracing().propagation().injector(SETTER);
+    tracing = httpTracing.tracing();
   }
-
 
   static final Setter<SoapHeader, String> SETTER = new Setter<SoapHeader, String>() {
     @Override
@@ -48,7 +45,17 @@ public class TraceWebServiceClientInterceptor implements ClientInterceptor {
   @Override
   public boolean handleRequest(MessageContext messageContext) {
     SoapMessage request = (SoapMessage) messageContext.getRequest();
-    Span span = handler.handleSend(injector, request.getSoapHeader(), request);
+    // before you send a request, add metadata that describes the operation
+    Span span = tracer
+        .nextSpan()
+        .name("soap method")
+        .kind(Kind.CLIENT)
+        .tag("http.method", "POST")
+        .tag("http.path", "/ws");
+    // Add the trace context to the request, so it can be propagated in-band
+    tracing.propagation().injector(SETTER).inject(span.context(), request.getSoapHeader());
+    // when the request is scheduled, start the span
+    span.start();
     return true;
   }
 
@@ -56,14 +63,15 @@ public class TraceWebServiceClientInterceptor implements ClientInterceptor {
   public boolean handleResponse(MessageContext messageContext) {
     SoapMessage response = (SoapMessage) messageContext.getResponse();
     Span span = tracer.currentSpan();
-    handler.handleReceive(response, null, span);
+    span.finish();
     return true;
   }
 
   @Override
   public boolean handleFault(MessageContext messageContext) {
     Span span = tracer.currentSpan();
-    handler.handleReceive(null, new SoapFaultClientException((SoapMessage) messageContext.getResponse()), span);
+    span.error(new SoapFaultClientException((SoapMessage) messageContext.getResponse()));
+    span.finish();
     return true;
   }
 

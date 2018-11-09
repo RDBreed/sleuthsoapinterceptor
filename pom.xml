@@ -31,10 +31,12 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-sleuth</artifactId>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-sleuth-core</artifactId>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>javax.servlet</groupId>

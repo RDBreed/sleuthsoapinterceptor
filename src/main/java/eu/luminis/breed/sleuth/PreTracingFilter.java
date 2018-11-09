@@ -12,7 +12,6 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
-import javax.xml.bind.JAXBException;
 import javax.xml.soap.MessageFactory;
 import javax.xml.soap.SOAPException;
 import org.slf4j.Logger;
@@ -48,17 +47,23 @@ public class PreTracingFilter implements Filter, Ordered {
       String body = contentCachingRequestWrapper.getRequestBody();
       InputStream bStream = new ByteArrayInputStream(body.getBytes());
       try {
-        SoapMessage soapMessage = new SaajSoapMessageFactory(MessageFactory.newInstance()).createWebServiceMessage(bStream);
-        SleuthHeader inSoapHeader = new SoapHeaderParserService().getInSoapHeader(soapMessage.getSoapHeader(), SleuthHeader.class, SleuthHeader.Q_NAME);
-        for (Entry<String, String> keyWithValue : inSoapHeader.getValues().entrySet()) {
-          contentCachingRequestWrapper.addExtraHeader(keyWithValue.getKey(), keyWithValue.getValue());
-        }
+        getSoapHeader(contentCachingRequestWrapper, bStream);
       } catch (SOAPException e) {
         logger.error("Could not parse soapmessage", e);
       }
       chain.doFilter(contentCachingRequestWrapper, response);
     } else {
       chain.doFilter(request, response);
+    }
+  }
+
+  private void getSoapHeader(DefaultRequestBodyWrapper contentCachingRequestWrapper, InputStream bStream) throws IOException, SOAPException {
+    SoapMessage soapMessage = new SaajSoapMessageFactory(MessageFactory.newInstance()).createWebServiceMessage(bStream);
+    SleuthHeader inSoapHeader = new SoapHeaderParserService().getInSoapHeader(soapMessage.getSoapHeader(), SleuthHeader.class, SleuthHeader.Q_NAME);
+    if(inSoapHeader != null) {
+      for (Entry<String, String> keyWithValue : inSoapHeader.getValues().entrySet()) {
+        contentCachingRequestWrapper.addExtraHeader(keyWithValue.getKey(), keyWithValue.getValue());
+      }
     }
   }
 
